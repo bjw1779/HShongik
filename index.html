@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>홍익대 제1기숙사 실시간 작업 현황판</title>
+<style>
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #f4f6f8;
+}
+
+/* ===== 상단 배경 영역 ===== */
+.header {
+    position: relative;
+    height: 300px;
+    background: url("hongik_dormitory.jpg") center center / cover no-repeat;
+}
+
+.header::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+}
+
+.header h1 {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #ffffff;
+    font-size: 36px;
+    font-weight: bold;
+    z-index: 1;
+    text-align: center;
+}
+
+/* ===== 본문 ===== */
+.container {
+    padding: 30px;
+    background-color: #fff;
+    margin-top: -50px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}
+
+/* 실시간 날짜/시간 */
+.datetime {
+    text-align: center;
+    font-size: 28px;
+    font-weight: bold;
+    margin: 60px 0 30px 0; /* 상단 여유 확보 */
+    color: #333;
+}
+
+.control {
+    text-align: right;
+    margin-bottom: 10px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+}
+
+th, td {
+    border: 1px solid #ccc;
+    padding: 8px;
+    text-align: center;
+}
+
+/* 순번 너비 */
+th:nth-child(1), td:nth-child(1) {
+    width: 40px;
+    min-width: 40px;
+}
+
+/* 업체명 너비 */
+th:nth-child(2), td:nth-child(2) {
+    width: 200px;
+    min-width: 200px;
+}
+
+/* 구역 너비 */
+th:nth-child(3), td:nth-child(3) {
+    width: 200px;
+    min-width: 200px;
+}
+
+/* 작업시간 너비 */
+th:nth-child(4), td:nth-child(4) {
+    width: 200px;
+    min-width: 200px;
+}
+
+/* 작업내용 너비 자동 */
+th:nth-child(5), td:nth-child(5) {
+    width: auto;
+}
+
+/* 상태 칸 전체 색 적용 */
+td.status {
+    font-weight: bold;
+}
+
+/* 관리(삭제) 너비 */
+th:nth-child(7), td:nth-child(7) {
+    width: 80px;
+    min-width: 80px;
+}
+
+th {
+    background: #333;
+    color: #fff;
+}
+
+input, select {
+    width: 90%;
+    padding: 5px;
+    text-align: center;
+    box-sizing: border-box;
+}
+
+.time-box {
+    display: flex;
+    gap: 5px;
+    justify-content: center;
+}
+
+.no {
+    font-weight: bold;
+    background: #f1f1f1;
+}
+
+.working {
+    background-color: #007bff;
+    color: #fff;
+}
+
+.finished {
+    background-color: #d3d3d3;
+    color: #000;
+}
+
+button {
+    padding: 5px 8px;
+    cursor: pointer;
+}
+</style>
+</head>
+
+<body>
+
+<!-- 상단 배경 이미지 + 제목 -->
+<div class="header">
+    <h1>홍익대 제1기숙사 실시간 작업 현황판</h1>
+</div>
+
+<!-- 본문 영역 -->
+<div class="container">
+
+<!-- 실시간 날짜/시간 -->
+<div class="datetime" id="datetime"></div>
+
+<div class="control">
+    <button onclick="addRow()">➕ 줄 추가</button>
+</div>
+
+<table>
+<thead>
+<tr>
+    <th>순번</th>
+    <th>업체명</th>
+    <th>구역</th>
+    <th>작업시간</th>
+    <th>작업내용</th>
+    <th>상태</th>
+    <th>관리</th>
+</tr>
+</thead>
+
+<tbody id="table-body"></tbody>
+</table>
+</div>
+
+<script>
+/* ===== 실시간 날짜/시간 및 자정 초기화 ===== */
+function updateDateTime() {
+    const dt = new Date();
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth()+1).padStart(2,'0');
+    const d = String(dt.getDate()).padStart(2,'0');
+    const hh = dt.getHours();
+    const mm = String(dt.getMinutes()).padStart(2,'0');
+    const ss = String(dt.getSeconds()).padStart(2,'0');
+    document.getElementById('datetime').textContent = `${y}-${m}-${d} ${String(hh).padStart(2,'0')}:${mm}:${ss}`;
+
+    // 자정이 되면 localStorage 초기화
+    if(hh === 0 && mm === 0 && ss === 0) {
+        localStorage.removeItem("rows");
+        render(); // 화면 갱신
+    }
+}
+setInterval(updateDateTime, 1000);
+updateDateTime(); // 초기 실행
+
+/* ===== 작업 테이블 스크립트 ===== */
+const times = [];
+for (let h = 6; h <= 20; h++) times.push(String(h).padStart(2, "0") + ":00");
+
+function timeOptions(sel) {
+    return times.map(t => `<option ${t===sel?"selected":""}>${t}</option>`).join("");
+}
+
+function loadRows() {
+    return JSON.parse(localStorage.getItem("rows")) || [];
+}
+
+function saveRows(rows) {
+    localStorage.setItem("rows", JSON.stringify(rows));
+}
+
+function render() {
+    const tbody = document.getElementById("table-body");
+    const rows = loadRows();
+    tbody.innerHTML = "";
+
+    rows.forEach((r, i) => {
+        tbody.innerHTML += `
+        <tr>
+            <td class="no">${i+1}</td>
+            <td><input value="${r.company || ""}" onchange="update(${i},'company',this.value)" placeholder="업체명 입력"></td>
+            <td><input value="${r.area}" onchange="update(${i},'area',this.value)"></td>
+            <td>
+                <div class="time-box">
+                    <select onchange="update(${i},'start',this.value)">${timeOptions(r.start)}</select>
+                    ~
+                    <select onchange="update(${i},'end',this.value)">${timeOptions(r.end)}</select>
+                </div>
+            </td>
+            <td><input value="${r.task}" onchange="update(${i},'task',this.value)"></td>
+            <td class="status ${r.status}" onclick="toggleStatus(${i})">
+                ${r.status==="working"?"작업중":"작업종료"}
+            </td>
+            <td><button onclick="removeRow(${i})">🗑 삭제</button></td>
+        </tr>`;
+    });
+}
+
+function update(i, k, v) {
+    const r = loadRows();
+    r[i][k] = v;
+    saveRows(r);
+}
+
+function toggleStatus(i) {
+    const r = loadRows();
+    r[i].status = r[i].status==="working"?"finished":"working";
+    saveRows(r);
+    render();
+}
+
+function addRow() {
+    const r = loadRows();
+    r.push({
+        company: "",
+        area: "구역",
+        start: "08:00",
+        end: "17:00",
+        task: "작업내용 입력",
+        status: "working"
+    });
+    saveRows(r);
+    render();
+}
+
+function removeRow(i) {
+    const r = loadRows();
+    r.splice(i,1);
+    saveRows(r);
+    render();
+}
+
+// 최초 기본 10줄
+if (loadRows().length === 0) {
+    for (let i=0;i<10;i++) addRow();
+} else {
+    render();
+}
+</script>
+
+</body>
+</html>
