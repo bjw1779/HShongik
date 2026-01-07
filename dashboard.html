@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>홍익대 제1기숙사 실시간 작업 현황판</title>
+<style>
+body { margin:0; font-family: Arial, sans-serif; background:#f4f6f8; }
+.header { position: relative; height: 300px; background: url("hongik_dormitory.jpg") center center / cover no-repeat; }
+.header::after { content:""; position:absolute; inset:0; background:rgba(0,0,0,0.45); }
+.header h1 { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#fff; font-size:36px; font-weight:bold; z-index:1; }
+.container { padding:30px; background:#fff; margin-top:-50px; border-radius:8px; box-shadow:0 0 10px rgba(0,0,0,0.1); }
+.datetime { text-align:center; font-size:28px; font-weight:bold; margin:20px 0 10px; }
+.summary { display:flex; justify-content:center; gap:40px; margin-bottom:20px; font-size:22px; font-weight:bold; }
+.summary span { padding:10px 20px; border-radius:6px; }
+.total { background:#f1f1f1; }
+.working-total { background:#007bff; color:#fff; }
+.control { text-align:right; margin-bottom:10px; }
+table { width:100%; border-collapse: collapse; }
+th, td { border:1px solid #ccc; padding:8px; text-align:center; }
+th { background:#333; color:#fff; }
+th:nth-child(1), td:nth-child(1) { width:50px; }
+th:nth-child(2), td:nth-child(2) { width:180px; }
+th:nth-child(3), td:nth-child(3) { width:80px; }
+th:nth-child(4), td:nth-child(4) { width:140px; }
+th:nth-child(5), td:nth-child(5) { width:200px; }
+th:nth-child(8), td:nth-child(8) { width:80px; }
+.no { background:#f1f1f1; font-weight:bold; }
+input, select { width:90%; padding:5px; text-align:center; box-sizing:border-box; }
+.time-box { display:flex; gap:5px; justify-content:center; }
+td.status { font-weight:bold; cursor:pointer; }
+.working { background:#007bff; color:#fff; }
+.finished { background:#d3d3d3; color:#000; }
+button { padding:5px 8px; cursor:pointer; }
+</style>
+</head>
+<body>
+
+<div class="header">
+    <h1>홍익대 제1기숙사 실시간 작업 현황판</h1>
+</div>
+
+<div class="container">
+
+<div class="datetime" id="datetime"></div>
+
+<div class="summary">
+    <span class="total">총 인원 : <span id="totalPeople">0</span> 명</span>
+    <span class="working-total">작업중 인원 : <span id="workingPeople">0</span> 명</span>
+</div>
+
+<div class="control">
+    <button onclick="addRow()">➕ 줄 추가</button>
+    <button onclick="saveTable()">💾 저장</button>
+</div>
+
+<table>
+<thead>
+<tr>
+    <th>순번</th>
+    <th>업체명</th>
+    <th>인원</th>
+    <th>구역</th>
+    <th>작업시간</th>
+    <th>작업내용</th>
+    <th>상태</th>
+    <th>관리</th>
+</tr>
+</thead>
+<tbody id="table-body"></tbody>
+</table>
+
+</div>
+
+<script>
+const DEFAULTS = {
+    company: "업체명 입력",
+    people: "0",
+    area: "A",
+    task: "작업내용 입력"
+};
+
+/* ===== 시계 ===== */
+function updateDateTime(){
+    const d=new Date();
+    document.getElementById("datetime").textContent =
+        `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}
+         ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}:${String(d.getSeconds()).padStart(2,"0")}`;
+}
+setInterval(updateDateTime,1000);
+updateDateTime();
+
+/* ===== 시간 옵션 ===== */
+const times=[];
+for(let h=6;h<=20;h++) times.push(String(h).padStart(2,"0")+":00");
+function timeOptions(sel){
+    return times.map(t=>`<option ${t===sel?"selected":""}>${t}</option>`).join("");
+}
+
+/* ===== 로컬스토리지 ===== */
+function loadRows(){ return JSON.parse(localStorage.getItem("rows")) || []; }
+function saveRows(r){ localStorage.setItem("rows", JSON.stringify(r)); }
+
+/* ===== 합계 ===== */
+function updateSummary(){
+    let total=0, working=0;
+    document.querySelectorAll("#table-body tr").forEach(tr=>{
+        const people=parseInt(tr.cells[2].querySelector("input").value)||0;
+        total+=people;
+        if(tr.cells[6].classList.contains("working")) working+=people;
+    });
+    document.getElementById("totalPeople").textContent=total;
+    document.getElementById("workingPeople").textContent=working;
+}
+
+/* ===== 렌더 ===== */
+function render(){
+    const rows=loadRows();
+    const tbody=document.getElementById("table-body");
+    tbody.innerHTML="";
+    rows.forEach((r,i)=>{
+        tbody.innerHTML+=`
+        <tr>
+            <td class="no">${i+1}</td>
+            <td><input value="${r.company}"
+                onfocus="clearIfDefault(this,'company')"
+                onblur="restoreIfEmpty(this,'company')"></td>
+            <td><input type="number" min="0" value="${r.people}" oninput="updateSummary()"></td>
+            <td>
+                <select onchange="updateSummary()">
+                    <option value="A" ${r.area==="A"?"selected":""}>A</option>
+                    <option value="B" ${r.area==="B"?"selected":""}>B</option>
+                    <option value="C" ${r.area==="C"?"selected":""}>C</option>
+                    <option value="D" ${r.area==="D"?"selected":""}>D</option>
+                </select>
+            </td>
+            <td>
+                <div class="time-box">
+                    <select>${timeOptions(r.start)}</select>~<select>${timeOptions(r.end)}</select>
+                </div>
+            </td>
+            <td><input value="${r.task}"
+                onfocus="clearIfDefault(this,'task')"
+                onblur="restoreIfEmpty(this,'task')"></td>
+            <td class="status ${r.status}" onclick="toggleStatus(this)">
+                ${r.status==="working"?"작업중": r.status==="finished"?"작업종료":""}
+            </td>
+            <td><button onclick="removeRow(${i})">🗑</button></td>
+        </tr>`;
+    });
+    updateSummary();
+}
+
+/* ===== 입력 UX ===== */
+function clearIfDefault(input,key){ if(input.value===DEFAULTS[key]) input.value=""; }
+function restoreIfEmpty(input,key){ if(input.value.trim()==="") input.value=DEFAULTS[key]; }
+
+/* ===== 상태 토글 ===== */
+function toggleStatus(cell){
+    if(cell.classList.contains("working")) {
+        cell.classList.remove("working");
+        cell.classList.add("finished");
+        cell.textContent="작업종료";
+    } else if(cell.classList.contains("finished")) {
+        cell.classList.remove("finished");
+        cell.textContent="";
+    } else {
+        cell.classList.add("working");
+        cell.textContent="작업중";
+    }
+    updateSummary();
+}
+
+/* ===== 행 관리 ===== */
+function addRow(){
+    const r=loadRows();
+    r.push({
+        company: DEFAULTS.company,
+        people: DEFAULTS.people,
+        area: DEFAULTS.area,
+        start: "08:00",
+        end: "17:00",
+        task: DEFAULTS.task,
+        status: "",
+        pos:{x:50,y:50},
+        id: generateUUID()
+    });
+    saveRows(r);
+    render();
+}
+function removeRow(i){
+    const r=loadRows();
+    r.splice(i,1);
+    saveRows(r);
+    render();
+}
+
+/* ===== 저장 ===== */
+function saveTable(){
+    const rows=[];
+    const savedRows = JSON.parse(localStorage.getItem("rows")) || [];
+
+    document.querySelectorAll("#table-body tr").forEach((tr,i)=>{
+        const existing = savedRows[i] || {};
+        const timeSelects = tr.querySelector(".time-box").querySelectorAll("select");
+        rows.push({
+            company: tr.cells[1].querySelector("input").value,
+            people: tr.cells[2].querySelector("input").value,
+            area: tr.cells[3].querySelector("select").value,
+            start: timeSelects[0].value,
+            end: timeSelects[1].value,
+            task: tr.cells[5].querySelector("input").value,
+            status: tr.cells[6].classList.contains("working")?"working":
+                    tr.cells[6].classList.contains("finished")?"finished":"",
+            pos: existing.pos || {x:50,y:50},
+            id: existing.id || generateUUID()
+        });
+    });
+    saveRows(rows);
+    alert("저장 완료 ✅");
+}
+
+/* ===== 초기화 ===== */
+function initRows(){
+    const r=[];
+    for(let i=0;i<10;i++){
+        r.push({
+            company: DEFAULTS.company,
+            people: DEFAULTS.people,
+            area: DEFAULTS.area,
+            start:"08:00",
+            end:"17:00",
+            task: DEFAULTS.task,
+            status:"",
+            pos:{x:50,y:50},
+            id: generateUUID()
+        });
+    }
+    saveRows(r);
+    render();
+}
+
+function generateUUID(){
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){
+        const r=Math.random()*16|0,v=c=='x'?r:(r&0x3|0x8); return v.toString(16);
+    });
+}
+
+if(loadRows().length===0) initRows();
+else render();
+</script>
+<script>
+document.addEventListener("focusin", ()=>{ if(window.parent){ window.parent.postMessage("pause", "*"); }});
+document.addEventListener("focusout", ()=>{ if(window.parent){ window.parent.postMessage("resume", "*"); }});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>홍익대 제1기숙사 현황판</title>
+<style>
+html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+}
+iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+</style>
+</head>
+<body>
+
+<iframe id="screen" src="dashboard.html"></iframe>
+
+<script>
+const pages = [
+    "dashboard.html",
+    "map.html"
+];
+
+let i = 0;
+let timer = null;
+const INTERVAL = 10000;
+
+function nextPage(){
+    i = (i + 1) % pages.length;
+    document.getElementById("screen").src = pages[i];
+}
+
+function startRotate(){
+    if(timer) return;
+    timer = setInterval(nextPage, INTERVAL);
+}
+
+function stopRotate(){
+    clearInterval(timer);
+    timer = null;
+}
+
+/* iframe로부터 작업 중 / 종료 신호 수신 */
+window.addEventListener("message", e=>{
+    if(e.data === "pause") stopRotate();
+    if(e.data === "resume") startRotate();
+});
+
+startRotate();
+</script>
+
+</body>
+</html>

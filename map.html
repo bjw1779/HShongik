@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>현장 구역도</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+html, body { margin:0; width:100%; height:100%; background:#000; }
+.map { position:relative; width:100%; height:100%; }
+.map img { width:100%; height:100%; object-fit:contain; pointer-events:none; }
+
+.area { position:absolute; pointer-events:auto; }
+
+.area.A { left:50%; top:55%; width:28%; height:28%; }
+.area.B { left:52%; top:30%; width:28%; height:28%; }
+.area.C { left:50%; top:45%; width:28%; height:28%; transform: translate(-50%, -50%); }
+.area.D { left:16%; top:32%; width:28%; height:28%; }
+
+.marker {
+  position:absolute;
+  width:18px;
+  height:18px;
+  border-radius:50%;
+  border:2px solid #fff;
+  background: var(--marker-color, #007bff);
+  box-shadow:0 0 10px rgba(0,0,0,0.8);
+  cursor:pointer;
+  animation: blink 1s infinite;
+  touch-action:none;
+  z-index:10;
+}
+
+.marker span {
+  position:absolute;
+  top:-22px;
+  left:50%;
+  transform:translateX(-50%);
+  font-size:12px;
+  font-weight:bold;
+  white-space:nowrap;
+  color: var(--marker-fg, #fff);
+}
+
+.tooltip {
+  position:absolute;
+  background:rgba(0,0,0,0.85);
+  color:#fff;
+  padding:6px 10px;
+  border-radius:6px;
+  font-size:12px;
+  display:block;
+  z-index:1000;
+}
+
+.tooltip .close-btn {
+  margin-top:4px;
+  padding:2px 5px;
+  font-size:10px;
+  cursor:pointer;
+  border:none;
+  border-radius:3px;
+  background:#fff;
+  color:#000;
+}
+
+@keyframes blink {
+  0% {opacity:1;}
+  50% {opacity:0.4;}
+  100% {opacity:1;}
+}
+</style>
+</head>
+<body>
+
+<div class="map" id="map">
+  <img src="site_map.jpg" alt="현장 구역도">
+  <div class="area A"></div>
+  <div class="area B"></div>
+  <div class="area C"></div>
+  <div class="area D"></div>
+</div>
+
+<script>
+/* ---------- storage ---------- */
+function loadRows(){
+  return JSON.parse(localStorage.getItem("rows")) || [];
+}
+function saveRows(r){
+  localStorage.setItem("rows", JSON.stringify(r));
+}
+
+/* ---------- 회사별 색상 ---------- */
+function companyColor(name){
+  name=(name||"").toLowerCase();
+  let hash=0;
+  for(let i=0;i<name.length;i++){
+    hash=name.charCodeAt(i)+((hash<<5)-hash);
+    hash&=hash;
+  }
+  const h=Math.abs(hash)%360, s=70, l=50;
+  const rgb=hslToRgb(h,s,l);
+  const bright=0.299*rgb[0]+0.587*rgb[1]+0.114*rgb[2];
+  return {
+    bg:`hsl(${h},${s}%,${l}%)`,
+    fg: bright>150?"#000":"#fff"
+  };
+}
+function hslToRgb(h,s,l){
+  s/=100; l/=100;
+  const c=(1-Math.abs(2*l-1))*s;
+  const x=c*(1-Math.abs((h/60)%2-1));
+  const m=l-c/2;
+  let r=0,g=0,b=0;
+  if(h<60){r=c;g=x;}
+  else if(h<120){r=x;g=c;}
+  else if(h<180){g=c;b=x;}
+  else if(h<240){g=x;b=c;}
+  else if(h<300){r=x;b=c;}
+  else{r=c;b=x;}
+  return [(r+m)*255,(g+m)*255,(b+m)*255];
+}
+
+/* ---------- 마커 초기화 ---------- */
+function initMarkers(){
+  document.querySelectorAll(".marker").forEach(m=>m.remove());
+
+  const rows=loadRows().filter(r=>r.status==="working");
+
+  rows.forEach(r=>{
+    const area=document.querySelector(".area."+r.area);
+    if(!area) return;
+
+    if(!r.pos) r.pos={x:50,y:50};
+
+    const marker=document.createElement("div");
+    marker.className="marker";
+    marker.style.left=r.pos.x+"%";
+    marker.style.top=r.pos.y+"%";
+
+    const label=document.createElement("span");
+    label.textContent=r.company;
+    marker.appendChild(label);
+
+    const colors=companyColor(r.company);
+    marker.style.setProperty("--marker-color",colors.bg);
+    marker.style.setProperty("--marker-fg",colors.fg);
+
+    let isDragging=false, dragged=false;
+    let startX,startY,origX,origY;
+    const rect=area.getBoundingClientRect();
+
+    function startDrag(x,y){
+      isDragging=true;
+      dragged=false;
+      startX=x; startY=y;
+      origX=r.pos.x/100*rect.width;
+      origY=r.pos.y/100*rect.height;
+      window.parent.postMessage("pause","*");
+    }
+    function moveDrag(x,y){
+      if(!isDragging) return;
+      const dx=x-startX, dy=y-startY;
+      if(Math.abs(dx)>4||Math.abs(dy)>4) dragged=true;
+      if(!dragged) return;
+
+      let nx=(origX+dx)/rect.width*100;
+      let ny=(origY+dy)/rect.height*100;
+      nx=Math.max(0,Math.min(100,nx));
+      ny=Math.max(0,Math.min(100,ny));
+      marker.style.left=nx+"%";
+      marker.style.top=ny+"%";
+      r.pos={x:nx,y:ny};
+    }
+    function endDrag(){
+      if(!isDragging) return;
+      isDragging=false;
+      const all=loadRows();
+      all.forEach(row=>{ if(row.id===r.id) row.pos=r.pos; });
+      saveRows(all);
+      window.parent.postMessage("resume","*");
+    }
+
+    marker.addEventListener("mousedown",e=>{e.stopPropagation();startDrag(e.clientX,e.clientY);});
+    document.addEventListener("mousemove",e=>moveDrag(e.clientX,e.clientY));
+    document.addEventListener("mouseup",endDrag);
+
+    marker.addEventListener("touchstart",e=>{
+      e.stopPropagation();
+      startDrag(e.touches[0].clientX,e.touches[0].clientY);
+    });
+    document.addEventListener("touchmove",e=>{
+      if(isDragging){
+        e.preventDefault();
+        moveDrag(e.touches[0].clientX,e.touches[0].clientY);
+      }
+    },{passive:false});
+    document.addEventListener("touchend",endDrag);
+
+    /* ---------- 클릭 시 독립 툴박스 생성 (클릭 지점 기준) ---------- */
+    marker.addEventListener("click", e => {
+      e.stopPropagation(); 
+
+      // 기존 툴팁 제거
+      document.querySelectorAll(".tooltip").forEach(t => t.remove());
+
+      const box = document.createElement("div");
+      box.className = "tooltip";
+      box.innerHTML = `
+        <b>${r.company}</b><br>
+        인원: ${r.people}<br>
+        작업내용: ${r.task}<br>
+        작업시간: ${r.start} ~ ${r.end}
+        <br><button class="close-btn">닫기</button>
+      `;
+
+      // map 최상위에 툴팁 추가
+      document.getElementById("map").appendChild(box);
+
+      // 클릭 위치 기준으로 툴팁 위치 계산
+      const mapRect = document.getElementById("map").getBoundingClientRect();
+      let left = e.clientX - mapRect.left + 10;
+      let top = e.clientY - mapRect.top + 10;
+
+      // 화면 밖으로 나가지 않도록 제한
+      left = Math.min(mapRect.width - box.offsetWidth - 10, left);
+      top = Math.min(mapRect.height - box.offsetHeight - 10, top);
+
+      box.style.left = left + "px";
+      box.style.top = top + "px";
+
+      box.querySelector(".close-btn").addEventListener("click", () => {
+        box.remove();
+      });
+    });
+
+    area.appendChild(marker);
+  });
+
+  /* ---------- 맵 클릭 시 모든 툴박스 닫기 ---------- */
+  document.getElementById("map").addEventListener("click", () => {
+    document.querySelectorAll(".tooltip").forEach(t => t.remove());
+  });
+}
+
+initMarkers();
+setInterval(initMarkers,3000);
+</script>
+
+</body>
+</html>
